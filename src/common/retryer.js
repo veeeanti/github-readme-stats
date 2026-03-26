@@ -3,13 +3,15 @@
 import { CustomError } from "./error.js";
 import { logger } from "./log.js";
 
-// Script variables.
+const RETRIES = 7;
 
-// Count the number of GitHub API tokens available.
-const PATs = Object.keys(process.env).filter((key) =>
-  /PAT_\d*$/.exec(key),
-).length;
-const RETRIES = process.env.NODE_ENV === "test" ? 7 : PATs;
+const getAvailableTokenCount = () => {
+  return Object.keys(process.env).filter((key) => /PAT_\d*$/.exec(key)).length;
+};
+
+const getMaxRetries = () => {
+  return process.env.NODE_ENV === "test" ? RETRIES : getAvailableTokenCount();
+};
 
 /**
  * @typedef {import("axios").AxiosResponse} AxiosResponse Axios response.
@@ -25,11 +27,13 @@ const RETRIES = process.env.NODE_ENV === "test" ? 7 : PATs;
  * @returns {Promise<any>} The response from the fetcher function.
  */
 const retryer = async (fetcher, variables, retries = 0) => {
-  if (!RETRIES) {
+  const maxRetries = getMaxRetries();
+
+  if (!maxRetries) {
     throw new CustomError("No GitHub API tokens found", CustomError.NO_TOKENS);
   }
 
-  if (retries > RETRIES) {
+  if (retries > maxRetries) {
     throw new CustomError(
       "Downtime due to GitHub API rate limiting",
       CustomError.MAX_RETRY,
@@ -37,7 +41,7 @@ const retryer = async (fetcher, variables, retries = 0) => {
   }
 
   try {
-    // try to fetch with the first token since RETRIES is 0 index i'm adding +1
+    // try to fetch with the first token since retries is 0-indexed
     let response = await fetcher(
       variables,
       // @ts-ignore
